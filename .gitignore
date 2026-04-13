@@ -1,4 +1,6 @@
 /__pycache__/
-/data/
-/results/
 *.slurm
+dataset.py
+inference.py
+model.py
+train.py
