@@ -8,6 +8,7 @@ from torch_geometric.data import DataLoader
 from torch_geometric.nn import SAGEConv, GATConv, GCNConv, TAGConv
 import pathlib
 import argparse
+from tqdm import tqdm
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -32,7 +33,7 @@ if __name__ == '__main__':
     print(device)
 
     outpath = pathlib.Path(args.outpath)
-    outpath.mkdir(parents=True, exist_ok=True) 
+    outpath.mkdir(parents=True, exist_ok=True)
 
     torch.manual_seed(42)
     model = Model(layer_type=models[args.model], n_hidden=args.hidden)
@@ -58,28 +59,45 @@ if __name__ == '__main__':
     loss_ep = []
     te_acc_ep = []
     tr_acc_ep = []
-    
+
     for epoch in range(num_epochs):
         model.train()
         loss = 0
-        for data in trainloader:
+
+        # Progress bar for batches
+        pbar = tqdm(trainloader, desc=f"Epoch {epoch+1}/{num_epochs}", leave=False)
+
+        for data in pbar:
             data = data.to(device)
             optimizer.zero_grad()
             out = model(data.x, data.edge_index)
             loss_ = criterion(out, data.y)
             loss_.backward()
             optimizer.step()
+
             loss += loss_.item()
+
+            # update progress bar info
+            pbar.set_postfix({
+                "batch_loss": f"{loss_.item():.4f}"
+            })
+
         exp_lr_scheduler.step()
-        loss/=len(train)
+
+        loss /= len(train)
+
         tr_acc = accuracy(model, trainloader2)
         te_acc = accuracy(model, testloader)
+
         loss_ep.append(loss)
         tr_acc_ep.append(tr_acc)
         te_acc_ep.append(te_acc)
+
+        # Keep your epoch-level print
         print(f'Epoch [{epoch+1}/{num_epochs}] Loss: {loss:.10f}, Train Acc: {tr_acc:.6f}, Test Acc: {te_acc:.6f}')
-        
+
     result = np.array([loss_ep, tr_acc_ep, te_acc_ep]).T
     np.savetxt(outpath/f'{type(model.layer1).__name__}{len(model.layer2)+1}_loss_tracc_teacc_{lr}_{num_epochs}_{step_size}_{gamma}.txt', result)
     max_idx = result[:,2].argmax()
     print(f'\nMax Test Accuracy at Epoch {max_idx+1}: {result[max_idx]}\n')
+    torch.save(model.state_dict(), outpath / "model.pt")

@@ -4,7 +4,7 @@ from torch_geometric.data import Dataset
 import torch
 import numpy as np
 
-ACTUAL_ROOM_CLASS = {1: "living_room", 
+ACTUAL_ROOM_CLASS = {1: "living_room",
                     2: "kitchen",
                     3: "bedroom",
                     4: "bathroom",
@@ -15,7 +15,7 @@ ACTUAL_ROOM_CLASS = {1: "living_room",
                     9: "dining_room",
                     10: "laundry_room"}
 
-MOD_ROOM_CLASS = {0: "living_room", 
+MOD_ROOM_CLASS = {0: "living_room",
                 1: "kitchen",
                 2: "bedroom",
                 3: "bathroom",
@@ -33,15 +33,15 @@ class FloorplanGraphDataset(Dataset):
         if split=='train':
             self.subgraphs = self.subgraphs[:120000]
         elif split=='test':
-            self.subgraphs = self.subgraphs[120000:]    
+            self.subgraphs = self.subgraphs[120000:]
         num_nodes = defaultdict(int)
         for g in self.subgraphs:
-            labels = g[0] 
+            labels = g[0]
             if len(labels) > 0:
                 num_nodes[len(labels)] += 1
         print(f'Number of graphs: {len(self.subgraphs)}')
         print(f'Number of graphs by rooms: {num_nodes}')
-        
+
     def len(self):
         return len(self.subgraphs)
 
@@ -63,7 +63,7 @@ class FloorplanGraphDataset(Dataset):
             area = l*b
             if l<b:
                 l, b = b, l
-            features.append([area, l, b, doors_count[i], 0, 0]) 
+            features.append([area, l, b, doors_count[i], 0, 0])
             rooms_bbs_new.append(np.array([xmin, ymin, xmax, ymax]))
         rooms_bbs = np.stack(rooms_bbs_new)
         intersect = self.intersect(rooms_bbs,rooms_bbs)
@@ -77,7 +77,7 @@ class FloorplanGraphDataset(Dataset):
                         features[i][4] = 1
                         features[j][5] = 1
                 if intersect[i,j]>0.7*intersect[i,i]:
-                    if intersect[j,j]>intersect[i,i]: 
+                    if intersect[j,j]>intersect[i,i]:
                         features[j][5] = 1
                         features[i][4] = 1
                     else:
@@ -93,7 +93,7 @@ class FloorplanGraphDataset(Dataset):
         rooms_bbs[:, 2:] -= shift
         tl -= shift
         br -= shift
-        edges = self.build_graph(rooms_bbs) 
+        edges = self.build_graph(rooms_bbs)
         labels = labels - 1
         labels[labels>=5] = labels[labels>=5] - 1
         x = torch.tensor(features, dtype=torch.float)
@@ -119,7 +119,7 @@ class FloorplanGraphDataset(Dataset):
 
     def filter_graphs(self, graphs):
         new_graphs = []
-        for g in graphs:       
+        for g in graphs:
             labels = g[0]
             rooms_bbs = g[1]
             # discard broken samples
@@ -131,7 +131,7 @@ class FloorplanGraphDataset(Dataset):
         return new_graphs
 
     def is_adjacent(self, box_a, box_b, threshold=0.03):
-        
+
         x0, y0, x1, y1 = box_a
         x2, y2, x3, y3 = box_b
 
