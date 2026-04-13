@@ -4,3 +4,4 @@ dataset.py
 inference.py
 model.py
 train.py
+data/housegan_clean_data.npy
