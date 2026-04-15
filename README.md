@@ -25,9 +25,45 @@ visualize_inference.py
 ```
 python visualize_inference.py `
   --model-path ".\results\best_model.pt" `
-  --graph-pt "..\ablation_GraphRNN\graph-rnn\generated_graph.pt"
+  --graph-pt "..\ablation_GraphRNN\graph-rnn\generated_graph.pt" `
+  --save-labeled-graph ".\results\labeled_generated_graph.pt"
+
+```
+
+RNN to GraphSAGE labeled graph
+```
+python rnn_to_graphsage.py `
+  --graph-pt ".\ablation_GraphRNN\graph-rnn\generated_graph.pt" `
+  --graphsage-model-path ".\results\best_model.pt" `
+  --labeled-graph-out ".\results\labeled_generated_graph.pt"
+
+```
+
+Generate from GraphRNN checkpoint and feed into GraphSAGE
+```
+python .\ablation_GraphRNN\graph-rnn\generate.py `
+  .\ablation_GraphRNN\graph-rnn\configs\checkpoints\checkpoint-96000.pth `
+  -n 40 `
+  --graphsage-out ".\results\generated_graph_40.pt"
+
+python rnn_to_graphsage.py `
+  --graph-pt ".\results\generated_graph_40.pt" `
+  --graphsage-model-path ".\results\best_model.pt" `
+  --labeled-graph-out ".\results\labeled_generated_graph_40.pt"
+
+```
+
+Or run the full bridge directly from the GraphRNN checkpoint
+```
+python rnn_to_graphsage.py `
+  --rnn-model-path ".\ablation_GraphRNN\graph-rnn\configs\checkpoints\checkpoint-96000.pth" `
+  --nodes 40 `
+  --generated-graph-out ".\results\generated_graph_40.pt" `
+  --graphsage-model-path ".\results\best_model.pt" `
+  --labeled-graph-out ".\results\labeled_generated_graph_40.pt"
 
 ```
 
 Notes about inference
 - For a given graph, the predictions will be the same because the weights remain unchanged
+- `labeled_generated_graph.pt` stores the predicted node labels in both a PyG `Data` object (`data.y`) and a NetworkX graph with `predicted_room_type` / `predicted_room_name` node attributes

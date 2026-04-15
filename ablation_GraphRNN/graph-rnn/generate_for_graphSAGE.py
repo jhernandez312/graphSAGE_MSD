@@ -17,16 +17,16 @@ def adj_to_edge_index(adj: np.ndarray) -> torch.Tensor:
 
 def build_structural_features(adj: np.ndarray) -> torch.Tensor:
     """
-    Build 6 node features so the classifier can run.
+    Build the same 7 structural node features used by `MSDFloorplanGraphDataset`.
 
-    These are NOT the original House-GAN semantic/geometric features.
-    They are graph-structural stand-ins:
-      0. degree
-      1. normalized degree
-      2. clustering coefficient
-      3. betweenness centrality
-      4. pagerank
-      5. is_leaf
+    These are graph-structural stand-ins for generated graphs:
+      0. normalized degree
+      1. clustering coefficient
+      2. betweenness centrality
+      3. pagerank
+      4. is_leaf
+      5. closeness centrality
+      6. normalized average neighbor degree
     """
     G = nx.from_numpy_array(adj)
 
@@ -47,19 +47,28 @@ def build_structural_features(adj: np.ndarray) -> torch.Tensor:
     pagerank_dict = nx.pagerank(G) if n > 0 else {}
     pagerank = np.array([pagerank_dict.get(i, 0.0) for i in range(n)], dtype=np.float32)
 
+    closeness_dict = nx.closeness_centrality(G)
+    closeness = np.array([closeness_dict[i] for i in range(n)], dtype=np.float32)
+
+    avg_neighbor_deg = np.array(
+        [np.mean([degrees[nb] for nb in G.neighbors(i)]) if degrees[i] > 0 else 0.0 for i in range(n)],
+        dtype=np.float32,
+    )
+    avg_neighbor_deg_norm = avg_neighbor_deg / (n - 1) if n > 1 else np.zeros_like(avg_neighbor_deg)
+
     is_leaf = (degrees == 1).astype(np.float32)
 
     x = np.stack(
-        [degrees, norm_degree, clustering, betweenness, pagerank, is_leaf],
-        axis=1
+        [norm_degree, clustering, betweenness, pagerank, is_leaf, closeness, avg_neighbor_deg_norm],
+        axis=1,
     )
     return torch.tensor(x, dtype=torch.float)
 
 
 def build_zero_features(adj: np.ndarray) -> torch.Tensor:
-    """Fallback: all-zero 6D node features."""
+    """Fallback: all-zero 7D node features."""
     n = adj.shape[0]
-    return torch.zeros((n, 6), dtype=torch.float)
+    return torch.zeros((n, 7), dtype=torch.float)
 
 
 def main():
@@ -68,7 +77,7 @@ def main():
     parser.add_argument("-n", "--nodes", dest="num_nodes", type=int, default=10,
                         help="Requested number of nodes to generate")
     parser.add_argument("--feature-mode", choices=["structural", "zeros"], default="structural",
-                        help="How to create 6D node features for classifier input")
+                        help="How to create 7D node features for classifier input")
     parser.add_argument("--out", default="generated_graph.pt",
                         help="Output .pt file to save a PyG Data object")
     args = parser.parse_args()
@@ -86,7 +95,11 @@ def main():
     else:
         x = build_zero_features(adj_matrix)
 
-    data = Data(x=x, edge_index=edge_index)
+    data = Data(
+        x=x,
+        edge_index=edge_index,
+        original_node_ids=torch.arange(adj_matrix.shape[0], dtype=torch.long),
+    )
 
     # Save extra info too, since it helps debugging later
     payload = {

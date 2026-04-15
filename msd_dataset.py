@@ -117,7 +117,7 @@ class MSDFloorplanGraphDataset(Dataset):
 
     def _get_base_feature_dim(self):
         if self.feature_mode == "structural":
-            return 6
+            return 7
         if self.feature_mode == "zoning":
             if self.num_zoning_types is None:
                 raise ValueError("num_zoning_types must be known for zoning features.")
@@ -166,7 +166,7 @@ class MSDFloorplanGraphDataset(Dataset):
             norm_degree = degrees / (n - 1)
         else:
             norm_degree = np.zeros_like(degrees)
-
+        
         clustering_dict = nx.clustering(graph)
         clustering = np.array([clustering_dict[i] for i in range(n)], dtype=np.float32)
 
@@ -176,10 +176,26 @@ class MSDFloorplanGraphDataset(Dataset):
         pagerank_dict = nx.pagerank(graph) if n > 0 else {}
         pagerank = np.array([pagerank_dict.get(i, 0.0) for i in range(n)], dtype=np.float32)
 
+        closeness_dict = nx.closeness_centrality(graph)
+        closeness = np.array([closeness_dict[i] for i in range(n)], dtype=np.float32)
+
+
+        avg_neighbor_deg = np.array(
+        [np.mean([degrees[nb] for nb in graph.neighbors(i)]) if degrees[i] > 0 else 0.0
+        for i in range(n)],
+        dtype=np.float32,
+)
+        avg_neighbor_deg_norm = avg_neighbor_deg / (n - 1) if n > 1 else np.zeros_like(avg_neighbor_deg)
+
+        triangles_dict = nx.triangles(graph)
+        triangles = np.array([triangles_dict[i] for i in range(n)], dtype=np.float32)
+
+        triangles_norm = triangles / (triangles.max() + 1e-6)
+
         is_leaf = (degrees == 1).astype(np.float32)
 
         x = np.stack(
-            [degrees, norm_degree, clustering, betweenness, pagerank, is_leaf],
+            [norm_degree, clustering, betweenness, pagerank, is_leaf, closeness, avg_neighbor_deg_norm],
             axis=1,
         )
         return torch.tensor(x, dtype=torch.float)

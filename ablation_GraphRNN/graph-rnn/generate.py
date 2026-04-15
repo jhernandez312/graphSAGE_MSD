@@ -1,11 +1,13 @@
 '''Code to use trained GraphRNN to generate a new graph.'''
 
 import argparse
+import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import torch
+from torch_geometric.data import Data
 
 from model import GraphLevelRNN, EdgeLevelRNN, EdgeLevelMLP
-import evaluate
 
 
 def m_seq_to_adj_mat(m_seq, m):
@@ -26,6 +28,52 @@ def sample_softmax(x):
     one_hot = torch.zeros([num_classes])
     one_hot[c] = 1
     return one_hot
+
+
+def adj_to_edge_index(adj):
+    rows, cols = np.nonzero(adj)
+    return torch.tensor(np.vstack([rows, cols]), dtype=torch.long)
+
+
+def build_structural_features(adj):
+    graph = nx.from_numpy_array(adj)
+    num_nodes = adj.shape[0]
+    degrees = np.array([degree for _, degree in graph.degree()], dtype=np.float32)
+
+    if num_nodes > 1:
+        norm_degree = degrees / (num_nodes - 1)
+    else:
+        norm_degree = np.zeros_like(degrees)
+
+    clustering_dict = nx.clustering(graph)
+    clustering = np.array([clustering_dict[i] for i in range(num_nodes)], dtype=np.float32)
+
+    betweenness_dict = nx.betweenness_centrality(graph, normalized=True)
+    betweenness = np.array([betweenness_dict[i] for i in range(num_nodes)], dtype=np.float32)
+
+    pagerank_dict = nx.pagerank(graph) if num_nodes > 0 else {}
+    pagerank = np.array([pagerank_dict.get(i, 0.0) for i in range(num_nodes)], dtype=np.float32)
+
+    closeness_dict = nx.closeness_centrality(graph)
+    closeness = np.array([closeness_dict[i] for i in range(num_nodes)], dtype=np.float32)
+
+    avg_neighbor_deg = np.array(
+        [np.mean([degrees[nb] for nb in graph.neighbors(i)]) if degrees[i] > 0 else 0.0 for i in range(num_nodes)],
+        dtype=np.float32,
+    )
+    avg_neighbor_deg_norm = avg_neighbor_deg / (num_nodes - 1) if num_nodes > 1 else np.zeros_like(avg_neighbor_deg)
+
+    is_leaf = (degrees == 1).astype(np.float32)
+
+    x = np.stack(
+        [norm_degree, clustering, betweenness, pagerank, is_leaf, closeness, avg_neighbor_deg_norm],
+        axis=1,
+    )
+    return torch.tensor(x, dtype=torch.float)
+
+
+def build_zero_features(adj):
+    return torch.zeros((adj.shape[0], 7), dtype=torch.float)
 
 
 def rnn_edge_gen(edge_rnn, h, num_edges, adj_vec_size, sample_fun, attempts=None):
@@ -193,18 +241,51 @@ def load_model_from_config(model_path):
     return node_model, edge_model, input_size, edge_gen_function, mode
 
 
+def draw_generated_graph(adj_matrix, file_name='test_new', directed=False):
+    graph = nx.from_numpy_array(adj_matrix, create_using=nx.DiGraph if directed else nx.Graph)
+    plt.figure(figsize=(6, 6))
+    nx.draw_networkx(graph, pos=nx.spring_layout(graph, seed=42), with_labels=True, node_size=500)
+    plt.axis('off')
+    plt.tight_layout()
+    plt.savefig(f'{file_name}.png', dpi=200, bbox_inches='tight')
+    plt.close()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('model_path', help='Path of the model weights')
     parser.add_argument('-n', '--nodes', dest='num_nodes', required=False, default=10, type=int,
                         help='Number of nodes')
+    parser.add_argument('--graphsage-out', default=None,
+                        help='Optional .pt path to save a GraphSAGE-ready graph payload')
+    parser.add_argument('--graphsage-feature-mode', choices=['structural', 'zeros'], default='structural',
+                        help='Feature construction mode for the optional GraphSAGE payload')
     args = parser.parse_args()
 
     node_model, edge_model, input_size, edge_gen_function, mode = load_model_from_config(args.model_path)
     adj_matrix = generate(args.num_nodes, node_model, edge_model, input_size, edge_gen_function, mode)
 
-    evaluate.draw_generated_graph(adj_matrix, 'test_new', directed=mode != 'undirected')
+    draw_generated_graph(adj_matrix, 'test_new', directed=mode != 'undirected')
+
+    if args.graphsage_out is not None:
+        binary_adj = (adj_matrix > 0).astype(np.int64)
+        if args.graphsage_feature_mode == 'structural':
+            x = build_structural_features(binary_adj)
+        else:
+            x = build_zero_features(binary_adj)
+
+        payload = {
+            'data': Data(
+                x=x,
+                edge_index=adj_to_edge_index(binary_adj),
+                original_node_ids=torch.arange(binary_adj.shape[0], dtype=torch.long),
+            ),
+            'adj_matrix': binary_adj,
+            'feature_mode': args.graphsage_feature_mode,
+            'source': 'generate.py',
+        }
+        torch.save(payload, args.graphsage_out)
+        print(f"Saved GraphSAGE-ready graph payload to: {args.graphsage_out}")
 
     print("Adjacency shape:", adj_matrix.shape)
     print("Number of edges:", adj_matrix.sum())
-

@@ -4,7 +4,7 @@ import matplotlib.patches as patches
 import torch
 from torch_geometric.utils import to_networkx
 import networkx as nx
-from dataset import MOD_ROOM_CLASS
+from msd_dataset import ROOM_NAMES
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -12,7 +12,7 @@ def visualize(d, bbs=None):
     G = to_networkx(d, to_undirected=True)
     plt.figure(figsize=(7,7))
     plt.axis('off')
-    labels = {i: MOD_ROOM_CLASS[int(d.y[i])] for i in range(len(d.y))}
+    labels = {i: ROOM_NAMES[int(d.y[i])] for i in range(len(d.y))}
     c = plt.get_cmap('Dark2').colors
     color = [c[i] for i in d.y]
     nx.draw_networkx(G, pos=nx.spring_layout(G, seed=42), with_labels=True, labels=labels, node_color=color, cmap='Dark2')
