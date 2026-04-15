@@ -1,0 +1,44 @@
+model:
+  edge_model: "rnn"   # "mlp" or "rnn"
+
+  GraphRNN:
+    embedding_size: 32 #64 - commented ones are suggested
+    hidden_size: 64 #128
+    num_layers: 4 #4
+
+  EdgeRNN:
+    embedding_size: 8 #16
+    hidden_size: 16 #64
+    num_layers: 4 #4
+
+
+data:
+  dataset: "swiss"
+
+  # path to your graph pickle directory
+  graph_dir: "C:/Users/Rasin bran 2/Desktop/vscode workspaces/code/MA_python_wrapper/swiss_dwellings_test/actual_data/train/graph_in"
+
+  bfs: True
+
+  # max number of previous nodes GraphRNN looks at
+  # since nodes ≤ 36 → sequence ≤ 35
+  m: 12 #35
+
+  train_split: 0.8
+
+
+train:
+  steps: 96000 #100000
+
+  batch_size: 32 #32
+
+  lr: 0.003 #0.003
+
+  lr_schedule_milestones: [2400, 3000] #[20000, 60000]
+  lr_schedule_gamma: 0.3
+
+  print_iter: 100
+  checkpoint_iter: 10000
+
+  checkpoint_dir: "./checkpoints"
+  log_dir: "./log"
