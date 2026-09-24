@@ -86,29 +86,8 @@ def save_training_plot(outpath, model_name, num_layers, lr, epochs, step, gamma,
     print(f"Saved training plot to {plot_path}")
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--model", choices=["mlp", "gcn", "gat", "sage", "tagcn"], default="sage", help="Type of model")
-    parser.add_argument("--hidden", type=int, default=2, help="Number of hidden/message passing layers")
-    parser.add_argument("--epoch", type=int, default=100, help="Number of epochs to train")
-    parser.add_argument("--lr", type=float, default=0.004, help="Learning rate")
-    parser.add_argument("--step", type=int, default=10, help="Step size for exponential learning rate scheduling")
-    parser.add_argument("--gamma", type=float, default=0.8, help="Decay rate for exponential learning rate scheduling")
-    parser.add_argument("--bs", type=int, default=128, help="Batch size for training")
-    parser.add_argument("--outpath", type=str, default="./results", help="Path to save results")
-    parser.add_argument("--val_ratio", type=float, default=0.1, help="Fraction of labeled training graphs to use for validation")
-    parser.add_argument("--split_seed", type=int, default=42, help="Random seed for train/validation split")
-    parser.add_argument("--train_graph_in_dir", type=str, required=True, help="Path to training graph_in directory")
-    parser.add_argument("--train_graph_out_dir", type=str, required=True, help="Path to training graph_out directory")
-    parser.add_argument("--test_graph_in_dir", type=str, default=None, help="Path to test graph_in directory")
-    parser.add_argument("--test_graph_out_dir", type=str, default=None, help="Optional path to test graph_out directory")
-    parser.add_argument("--keep_non_rooms", action="store_true", help="Keep non-room labels instead of filtering to room classes")
-    parser.add_argument("--save_test_predictions", action="store_true", help="Save test predictions even when labels are available")
-    parser.add_argument("--feature_mode", choices=["structural", "zoning"], default="structural", help="Node feature construction mode")
-    parser.add_argument("--semantic_features", choices=["none", "room_shape"], default="none", help="Optional semantic feature columns to append")
-    parser.add_argument("--semantic_dropout", type=float, default=0.0, help="Probability of zeroing semantic columns per training graph")
-    args = parser.parse_args()
-
+def train_graphsage(args, device=None, seed=42):
+    """Train the configured classifier and return its selected checkpoint path."""
     models = {
         "mlp": Linear,
         "gcn": GCNConv,
@@ -117,13 +96,16 @@ if __name__ == "__main__":
         "tagcn": TAGConv,
     }
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(device)
     print(device)
 
     outpath = pathlib.Path(args.outpath)
     outpath.mkdir(parents=True, exist_ok=True)
 
-    torch.manual_seed(42)
+    torch.manual_seed(seed)
 
     train_dataset = MSDFloorplanGraphDataset(
         graph_in_dir=args.train_graph_in_dir,
@@ -313,7 +295,8 @@ if __name__ == "__main__":
         "semantic_feature_dim": semantic_feature_dim,
         "semantic_dropout": args.semantic_dropout,
     }
-    torch.save(checkpoint, outpath / "model.pt")
+    model_path = outpath / "model.pt"
+    torch.save(checkpoint, model_path)
     if best_checkpoint is not None:
         torch.save(best_checkpoint, outpath / "best_model.pt")
         print(f"Saved best validation checkpoint to {outpath / 'best_model.pt'}")
@@ -322,3 +305,39 @@ if __name__ == "__main__":
         predictions = predict_graphs(model, test_dataset, device)
         torch.save(predictions, outpath / "test_predictions.pt")
         print(f"Saved test predictions to {outpath / 'test_predictions.pt'}")
+
+    selected_checkpoint = outpath / "best_model.pt" if best_checkpoint is not None else model_path
+    return selected_checkpoint.resolve()
+
+
+def build_arg_parser():
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--model", choices=["mlp", "gcn", "gat", "sage", "tagcn"], default="sage", help="Type of model")
+    parser.add_argument("--hidden", type=int, default=2, help="Number of hidden/message passing layers")
+    parser.add_argument("--epoch", type=int, default=100, help="Number of epochs to train")
+    parser.add_argument("--lr", type=float, default=0.004, help="Learning rate")
+    parser.add_argument("--step", type=int, default=10, help="Step size for exponential learning rate scheduling")
+    parser.add_argument("--gamma", type=float, default=0.8, help="Decay rate for exponential learning rate scheduling")
+    parser.add_argument("--bs", type=int, default=128, help="Batch size for training")
+    parser.add_argument("--outpath", type=str, default="./results", help="Path to save results")
+    parser.add_argument("--val_ratio", type=float, default=0.1, help="Fraction of labeled training graphs to use for validation")
+    parser.add_argument("--split_seed", type=int, default=42, help="Random seed for train/validation split")
+    parser.add_argument("--train_graph_in_dir", type=str, required=True, help="Path to training graph_in directory")
+    parser.add_argument("--train_graph_out_dir", type=str, required=True, help="Path to training graph_out directory")
+    parser.add_argument("--test_graph_in_dir", type=str, default=None, help="Path to test graph_in directory")
+    parser.add_argument("--test_graph_out_dir", type=str, default=None, help="Optional path to test graph_out directory")
+    parser.add_argument("--keep_non_rooms", action="store_true", help="Keep non-room labels instead of filtering to room classes")
+    parser.add_argument("--save_test_predictions", action="store_true", help="Save test predictions even when labels are available")
+    parser.add_argument("--feature_mode", choices=["structural", "zoning"], default="structural", help="Node feature construction mode")
+    parser.add_argument("--semantic_features", choices=["none", "room_shape"], default="none", help="Optional semantic feature columns to append")
+    parser.add_argument("--semantic_dropout", type=float, default=0.0, help="Probability of zeroing semantic columns per training graph")
+    return parser
+
+
+def main(argv=None):
+    args = build_arg_parser().parse_args(argv)
+    return train_graphsage(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -5,7 +5,20 @@ import networkx as nx
 
 from torch_geometric.data import Data
 
-from generate import load_model_from_config, generate
+try:
+    from .generate import load_model_from_config, generate
+except ImportError:  # Preserve direct execution from the legacy directory.
+    from generate import load_model_from_config, generate
+
+
+STRUCTURAL_FEATURE_NAMES = [
+    "degree",
+    "normalized_degree",
+    "clustering_coefficient",
+    "betweenness_centrality",
+    "pagerank",
+    "is_leaf",
+]
 
 
 def adj_to_edge_index(adj: np.ndarray) -> torch.Tensor:
@@ -62,6 +75,34 @@ def build_zero_features(adj: np.ndarray) -> torch.Tensor:
     return torch.zeros((n, 6), dtype=torch.float)
 
 
+def adjacency_to_pyg_data(adj: np.ndarray, feature_mode: str = "structural") -> Data:
+    """Build classifier input from a previously sampled adjacency matrix."""
+    adj = (np.asarray(adj) > 0).astype(np.int64)
+    if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
+        raise ValueError("adjacency matrix must be square.")
+    if feature_mode == "structural":
+        x = build_structural_features(adj)
+    elif feature_mode == "zeros":
+        x = build_zero_features(adj)
+    else:
+        raise ValueError(f"Unsupported feature mode: {feature_mode}")
+    return Data(x=x, edge_index=adj_to_edge_index(adj))
+
+
+def save_graph_payload(adj, output_path, feature_mode="structural", **extra):
+    """Save a backward-compatible generated graph payload."""
+    adj = (np.asarray(adj) > 0).astype(np.int64)
+    data = adjacency_to_pyg_data(adj, feature_mode=feature_mode)
+    payload = {
+        "data": data,
+        "adj_matrix": adj,
+        "feature_mode": feature_mode,
+        **extra,
+    }
+    torch.save(payload, output_path)
+    return payload
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("model_path", help="Path to GraphRNN checkpoint")
@@ -79,23 +120,10 @@ def main():
     # Make sure adjacency is binary/int for undirected graph use
     adj_matrix = (adj_matrix > 0).astype(np.int64)
 
-    edge_index = adj_to_edge_index(adj_matrix)
-
-    if args.feature_mode == "structural":
-        x = build_structural_features(adj_matrix)
-    else:
-        x = build_zero_features(adj_matrix)
-
-    data = Data(x=x, edge_index=edge_index)
-
-    # Save extra info too, since it helps debugging later
-    payload = {
-        "data": data,
-        "adj_matrix": adj_matrix,
-        "feature_mode": args.feature_mode,
-    }
-
-    torch.save(payload, args.out)
+    payload = save_graph_payload(adj_matrix, args.out, feature_mode=args.feature_mode)
+    data = payload["data"]
+    edge_index = data.edge_index
+    x = data.x
 
     print(f"Saved generated graph to: {args.out}")
     print("Adjacency shape:", adj_matrix.shape)

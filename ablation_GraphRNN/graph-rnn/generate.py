@@ -4,8 +4,10 @@ import argparse
 import numpy as np
 import torch
 
-from model import GraphLevelRNN, EdgeLevelRNN, EdgeLevelMLP
-import evaluate
+try:
+    from .model import GraphLevelRNN, EdgeLevelRNN, EdgeLevelMLP
+except ImportError:  # Preserve direct execution from the legacy directory.
+    from model import GraphLevelRNN, EdgeLevelRNN, EdgeLevelMLP
 
 
 def m_seq_to_adj_mat(m_seq, m):
@@ -17,12 +19,14 @@ def m_seq_to_adj_mat(m_seq, m):
 
 
 def sample_bernoulli(p):
-    return int(np.random.random() < p)
+    probability = float(p.detach().cpu().item()) if torch.is_tensor(p) else float(p)
+    return int(np.random.random() < probability)
 
 
 def sample_softmax(x):
     num_classes = x.shape[0]
-    c = np.random.choice(range(num_classes), p=torch.softmax(x, dim=0).numpy())
+    probabilities = torch.softmax(x, dim=0).detach().cpu().numpy()
+    c = np.random.choice(range(num_classes), p=probabilities)
     one_hot = torch.zeros([num_classes])
     one_hot[c] = 1
     return one_hot
@@ -42,7 +46,7 @@ def rnn_edge_gen(edge_rnn, h, num_edges, adj_vec_size, sample_fun, attempts=None
 
     Returns: Adjacency vector of size [1, 1, adj_vec_size]
     """
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = h.device
     adj_vec = torch.zeros([1, 1, adj_vec_size, edge_rnn.edge_feature_len], device=device)
 
     edge_rnn.set_first_layer_hidden(h)
@@ -76,7 +80,7 @@ def mlp_edge_gen(edge_mlp, h, num_edges, adj_vec_size, sample_fun, attempts=1):
 
     Returns: Adjacency vector of size [1, 1, adj_vec_size]
     """
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = h.device
     adj_vec = torch.zeros([1, 1, adj_vec_size, edge_mlp.edge_feature_len], device=device)
 
     # calculate probabilities of all edges from this node existing
@@ -104,7 +108,10 @@ def generate(num_nodes, node_model, edge_model, input_size, edge_gen_function, m
     :param input_size: the number of inputs to be fed into model
     :param edge_gen_function: which function to use to generate edges (MLP or RNN)
     """
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    if num_nodes < 1:
+        raise ValueError("num_nodes must be at least 1.")
+
+    device = next(node_model.parameters()).device
 
     node_model.eval()
     edge_model.eval()
@@ -162,10 +169,13 @@ def generate(num_nodes, node_model, edge_model, input_size, edge_gen_function, m
     return adj
 
 
-def load_model_from_config(model_path):
+def load_model_from_config(model_path, device=None):
     """Get model information from config and return models and model info."""
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    state = torch.load(model_path, map_location=device)
+    if device is None:
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    else:
+        device = torch.device(device)
+    state = torch.load(model_path, map_location=device, weights_only=False)
     config = state['config']
 
     input_size = config['data']['m']
@@ -203,6 +213,10 @@ if __name__ == '__main__':
     node_model, edge_model, input_size, edge_gen_function, mode = load_model_from_config(args.model_path)
     adj_matrix = generate(args.num_nodes, node_model, edge_model, input_size, edge_gen_function, mode)
 
+    try:
+        from . import evaluate
+    except ImportError:
+        import evaluate
     evaluate.draw_generated_graph(adj_matrix, 'test_new', directed=mode != 'undirected')
 
     print("Adjacency shape:", adj_matrix.shape)

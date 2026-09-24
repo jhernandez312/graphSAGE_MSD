@@ -30,6 +30,26 @@ Verify the GPU runtime:
 uv run python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA runtime:', torch.version.cuda); print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
 ```
 
+## Consolidated pipeline
+
+[`run_pipeline.py`](run_pipeline.py) is the main workflow for optional training, graph generation, conversion, GraphSAGE inference, and visualization. Edit the typed `CONFIG` block near the top of that file, then run:
+
+```powershell
+uv run python run_pipeline.py
+```
+
+GraphRNN and GraphSAGE training are separate switches and both default to `False`, so the default run uses the configured existing checkpoints. Set the corresponding `enabled` field to `True` and fill in that stage's dataset paths when retraining is needed. A successful run creates a new, non-overwriting directory below `runs/` with a manifest and one directory per generated graph.
+
+Each graph directory contains:
+
+- `raw_graph.png`, showing the generated topology.
+- `graph.pt`, containing the PyG `Data`, adjacency matrix, feature mode, predictions, and provenance.
+- `classified_graph.png`, showing the GraphSAGE room predictions.
+- `predictions.json`, listing each node's class ID and room name.
+- `metadata.json`, recording seeds, checkpoints, feature schema, layout, and graph sizes.
+
+The graph is sampled once. Conversion, both images, predictions, and metadata all use that same adjacency matrix. Generated graphs provide six structural features; when a structural GraphSAGE checkpoint declares additional semantic columns, the pipeline records and zero-fills those columns. Zoning checkpoints and directed GraphRNN checkpoints are rejected because the generator does not provide the required attributes.
+
 ## MSD training
 
 The graph directories are produced separately and are not included in this repository. Run training from the repository root, replacing the paths as needed:

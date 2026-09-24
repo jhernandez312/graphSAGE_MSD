@@ -8,3 +8,8 @@ inference.py
 model.py
 train.py
 data/housegan_clean_data.npy
+/runs/
+
+# The consolidated pipeline imports these bundled GraphRNN sources.
+!ablation_GraphRNN/graph-rnn/model.py
+!ablation_GraphRNN/graph-rnn/train.py

@@ -36,7 +36,7 @@ def adapt_feature_dim(data, checkpoint):
 
 
 def load_model(model_path, device):
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
 
     models = {
         "mlp": Linear,
@@ -100,6 +100,97 @@ def room_name(class_id):
     return str(class_id)
 
 
+def predict_node_classes(model, data):
+    """Return CPU class ids for every node in a PyG graph."""
+    model.eval()
+    with torch.no_grad():
+        return model(data.x, data.edge_index).argmax(dim=1).cpu()
+
+
+def pyg_data_to_networkx(data):
+    """Convert PyG connectivity to an undirected NetworkX graph."""
+    graph = nx.Graph()
+    graph.add_nodes_from(range(data.num_nodes))
+    edge_index = data.edge_index.detach().cpu().numpy()
+    for index in range(edge_index.shape[1]):
+        graph.add_edge(int(edge_index[0, index]), int(edge_index[1, index]))
+    return graph
+
+
+def graph_layout(graph, seed=42):
+    """Create one reusable layout for raw and classified renderings."""
+    return nx.spring_layout(graph, seed=seed)
+
+
+def render_raw_graph(graph, positions, save_path, show=False):
+    """Render an unlabeled topology using precomputed node positions."""
+    fig, axis = plt.subplots(figsize=(10, 8))
+    nx.draw_networkx_nodes(
+        graph,
+        positions,
+        node_color="lightsteelblue",
+        node_size=1800,
+        edgecolors="black",
+        ax=axis,
+    )
+    nx.draw_networkx_edges(graph, positions, width=1.5, ax=axis)
+    nx.draw_networkx_labels(graph, positions, font_size=9, ax=axis)
+    axis.set_title("Generated graph topology")
+    axis.set_axis_off()
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=200, bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+
+
+def render_classified_graph(
+    graph,
+    predictions,
+    node_ids,
+    positions,
+    save_path=None,
+    graph_label="generated graph",
+    show=False,
+):
+    """Render GraphSAGE predictions using caller-provided node positions."""
+    predictions = predictions.detach().cpu()
+    node_ids = node_ids.detach().cpu()
+    labels = {
+        index: f"{int(node_ids[index])}\n{room_name(int(predictions[index]))}"
+        for index in range(len(predictions))
+    }
+
+    fig, axis = plt.subplots(figsize=(10, 8))
+    nx.draw_networkx_nodes(
+        graph,
+        positions,
+        node_color=predictions.tolist(),
+        cmap=plt.get_cmap("tab10"),
+        node_size=1800,
+        edgecolors="black",
+        ax=axis,
+    )
+    nx.draw_networkx_edges(graph, positions, width=1.5, ax=axis)
+    nx.draw_networkx_labels(graph, positions, labels=labels, font_size=8, ax=axis)
+
+    counts = {}
+    for class_id in predictions.tolist():
+        name = room_name(int(class_id))
+        counts[name] = counts.get(name, 0) + 1
+    summary = ", ".join(f"{name}: {count}" for name, count in sorted(counts.items()))
+
+    axis.set_title(f"Predicted node labels for {graph_label}\n{summary}")
+    axis.set_axis_off()
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches="tight")
+        print(f"Saved figure to {save_path}")
+    if show:
+        plt.show()
+    plt.close(fig)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", required=True, help="Path to trained checkpoint")
@@ -113,52 +204,18 @@ def main():
     model, checkpoint = load_model(args.model_path, device)
     data, graph_label, node_ids = load_graph_data(args, checkpoint, device)
 
-    with torch.no_grad():
-        out = model(data.x, data.edge_index)
-        pred = out.argmax(dim=1).cpu()
-
-    edge_index = data.edge_index.cpu().numpy()
-    graph = nx.Graph()
-    graph.add_nodes_from(range(data.num_nodes))
-    for i in range(edge_index.shape[1]):
-        u = int(edge_index[0, i])
-        v = int(edge_index[1, i])
-        graph.add_edge(u, v)
-
-    labels = {
-        i: f"{int(node_ids[i])}\n{room_name(int(pred[i]))}"
-        for i in range(data.num_nodes)
-    }
-    colors = pred.tolist()
-
-    pos = nx.spring_layout(graph, seed=42)
-    plt.figure(figsize=(10, 8))
-    nx.draw_networkx_nodes(
+    pred = predict_node_classes(model, data)
+    graph = pyg_data_to_networkx(data)
+    pos = graph_layout(graph, seed=42)
+    render_classified_graph(
         graph,
+        pred,
+        node_ids,
         pos,
-        node_color=colors,
-        cmap=plt.get_cmap("tab10"),
-        node_size=1800,
-        edgecolors="black",
+        save_path=args.save_path,
+        graph_label=graph_label,
+        show=True,
     )
-    nx.draw_networkx_edges(graph, pos, width=1.5)
-    nx.draw_networkx_labels(graph, pos, labels=labels, font_size=8)
-
-    counts = {}
-    for class_id in pred.tolist():
-        name = room_name(int(class_id))
-        counts[name] = counts.get(name, 0) + 1
-    summary = ", ".join(f"{name}: {count}" for name, count in sorted(counts.items()))
-
-    plt.title(f"Predicted node labels for {graph_label}\n{summary}")
-    plt.axis("off")
-    plt.tight_layout()
-
-    if args.save_path:
-        plt.savefig(args.save_path, dpi=200, bbox_inches="tight")
-        print(f"Saved figure to {args.save_path}")
-
-    plt.show()
 
 
 if __name__ == "__main__":

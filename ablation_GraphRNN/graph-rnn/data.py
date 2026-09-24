@@ -4,7 +4,10 @@ import torch
 import random
 import pickle as pkl
 import os
-from utils import load_pickle
+try:
+    from .utils import load_pickle
+except ImportError:  # Preserve direct execution from the legacy directory.
+    from utils import load_pickle
 
 
 def generate_adjacency_vector_sequence(g, node_sequence):
