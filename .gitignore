@@ -1,8 +1,10 @@
-/__pycache__/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
 *.slurm
 dataset.py
 inference.py
 model.py
 train.py
 data/housegan_clean_data.npy
-../ablation_GraphRNN/.venv/
