@@ -10,6 +10,13 @@ train.py
 data/housegan_clean_data.npy
 /runs/
 
+# External datasets and local credentials must never be committed.
+/data/modified-swiss-dwellings*/
+/modified-swiss-dwellings*/
+/.env
+/.env.*
+!/.env.example
+
 # The consolidated pipeline imports these bundled GraphRNN sources.
 !ablation_GraphRNN/graph-rnn/model.py
 !ablation_GraphRNN/graph-rnn/train.py

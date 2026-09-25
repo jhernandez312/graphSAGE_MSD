@@ -20,6 +20,7 @@ import numpy as np
 import torch
 
 from msd_train import train_graphsage
+from msd_data import resolve_msd_paths
 from visualize_inference import (
     adapt_feature_dim,
     graph_layout,
@@ -67,6 +68,7 @@ class GraphRNNTrainingConfig:
     enabled: bool = False
     config_file: Path = Path("ablation_GraphRNN/graph-rnn/configs/config_swiss.yaml")
     restore_checkpoint: Optional[Path] = None
+    graph_dir: Optional[Path] = None
 
 
 @dataclass
@@ -229,10 +231,22 @@ def _load_legacy_module(module_name: str):
 
 
 def _graphsage_args(config: GraphSAGETrainingConfig, output_dir: Path):
-    if config.train_graph_in_dir is None or config.train_graph_out_dir is None:
+    if config.train_graph_in_dir is None and config.train_graph_out_dir is None:
+        dataset_paths = resolve_msd_paths()
+        train_graph_in_dir = dataset_paths.train_graph_in
+        train_graph_out_dir = dataset_paths.train_graph_out
+        test_graph_in_dir = config.test_graph_in_dir or dataset_paths.test_graph_in
+        test_graph_out_dir = config.test_graph_out_dir or dataset_paths.test_graph_out
+    elif config.train_graph_in_dir is None or config.train_graph_out_dir is None:
         raise ValueError(
-            "GraphSAGE training requires train_graph_in_dir and train_graph_out_dir."
+            "GraphSAGE training requires both training paths, or neither when "
+            "MSD_DATA_ROOT is set."
         )
+    else:
+        train_graph_in_dir = config.train_graph_in_dir
+        train_graph_out_dir = config.train_graph_out_dir
+        test_graph_in_dir = config.test_graph_in_dir
+        test_graph_out_dir = config.test_graph_out_dir
     return argparse.Namespace(
         model=config.model,
         hidden=config.hidden,
@@ -244,16 +258,16 @@ def _graphsage_args(config: GraphSAGETrainingConfig, output_dir: Path):
         outpath=str(output_dir),
         val_ratio=config.validation_ratio,
         split_seed=config.split_seed,
-        train_graph_in_dir=str(_resolve_path(config.train_graph_in_dir)),
-        train_graph_out_dir=str(_resolve_path(config.train_graph_out_dir)),
+        train_graph_in_dir=str(_resolve_path(train_graph_in_dir)),
+        train_graph_out_dir=str(_resolve_path(train_graph_out_dir)),
         test_graph_in_dir=(
-            str(_resolve_path(config.test_graph_in_dir))
-            if config.test_graph_in_dir is not None
+            str(_resolve_path(test_graph_in_dir))
+            if test_graph_in_dir is not None
             else None
         ),
         test_graph_out_dir=(
-            str(_resolve_path(config.test_graph_out_dir))
-            if config.test_graph_out_dir is not None
+            str(_resolve_path(test_graph_out_dir))
+            if test_graph_out_dir is not None
             else None
         ),
         keep_non_rooms=config.keep_non_rooms,
@@ -282,6 +296,10 @@ def _select_checkpoints(
             if graph_rnn_training.restore_checkpoint is not None
             else None
         )
+        if graph_rnn_training.graph_dir is None:
+            graph_dir = resolve_msd_paths().train_graph_in
+        else:
+            graph_dir = _resolve_path(graph_rnn_training.graph_dir)
         trainer = _load_legacy_module("train")
         graph_rnn_checkpoint = Path(
             trainer.train_graph_rnn(
@@ -290,6 +308,7 @@ def _select_checkpoints(
                 checkpoint_dir=checkpoint_dir,
                 log_dir=log_dir,
                 device=device,
+                graph_dir=graph_dir,
             )
         ).resolve()
         graph_rnn_checkpoint = _require_file(

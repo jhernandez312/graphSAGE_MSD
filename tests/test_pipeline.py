@@ -145,7 +145,9 @@ class PipelineTests(unittest.TestCase):
             config = pipeline.PipelineConfig(
                 training=pipeline.TrainingConfig(
                     graph_rnn=pipeline.GraphRNNTrainingConfig(
-                        enabled=True, config_file=graph_rnn_config
+                        enabled=True,
+                        config_file=graph_rnn_config,
+                        graph_dir=data_directory,
                     ),
                     graph_sage=pipeline.GraphSAGETrainingConfig(
                         enabled=True,

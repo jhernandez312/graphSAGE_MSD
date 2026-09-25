@@ -10,6 +10,7 @@ from torch_geometric.nn import GATConv, GCNConv, SAGEConv, TAGConv
 from tqdm import tqdm
 
 from msd_dataset import MSDFloorplanGraphDataset
+from msd_data import resolve_msd_paths
 from msd_model import Model
 from utils import accuracy
 
@@ -88,6 +89,20 @@ def save_training_plot(outpath, model_name, num_layers, lr, epochs, step, gamma,
 
 def train_graphsage(args, device=None, seed=42):
     """Train the configured classifier and return its selected checkpoint path."""
+    if args.train_graph_in_dir is None and args.train_graph_out_dir is None:
+        dataset_paths = resolve_msd_paths()
+        args.train_graph_in_dir = str(dataset_paths.train_graph_in)
+        args.train_graph_out_dir = str(dataset_paths.train_graph_out)
+        if args.test_graph_in_dir is None:
+            args.test_graph_in_dir = str(dataset_paths.test_graph_in)
+        if args.test_graph_out_dir is None and dataset_paths.test_graph_out is not None:
+            args.test_graph_out_dir = str(dataset_paths.test_graph_out)
+    elif args.train_graph_in_dir is None or args.train_graph_out_dir is None:
+        raise ValueError(
+            "Provide both --train_graph_in_dir and --train_graph_out_dir, or omit both "
+            "and set MSD_DATA_ROOT."
+        )
+
     models = {
         "mlp": Linear,
         "gcn": GCNConv,
@@ -322,8 +337,8 @@ def build_arg_parser():
     parser.add_argument("--outpath", type=str, default="./results", help="Path to save results")
     parser.add_argument("--val_ratio", type=float, default=0.1, help="Fraction of labeled training graphs to use for validation")
     parser.add_argument("--split_seed", type=int, default=42, help="Random seed for train/validation split")
-    parser.add_argument("--train_graph_in_dir", type=str, required=True, help="Path to training graph_in directory")
-    parser.add_argument("--train_graph_out_dir", type=str, required=True, help="Path to training graph_out directory")
+    parser.add_argument("--train_graph_in_dir", type=str, default=None, help="Path to training graph_in directory; defaults to MSD_DATA_ROOT")
+    parser.add_argument("--train_graph_out_dir", type=str, default=None, help="Path to training graph_out directory; defaults to MSD_DATA_ROOT")
     parser.add_argument("--test_graph_in_dir", type=str, default=None, help="Path to test graph_in directory")
     parser.add_argument("--test_graph_out_dir", type=str, default=None, help="Optional path to test graph_out directory")
     parser.add_argument("--keep_non_rooms", action="store_true", help="Keep non-room labels instead of filtering to room classes")

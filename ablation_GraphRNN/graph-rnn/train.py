@@ -193,6 +193,7 @@ def train_graph_rnn(
     checkpoint_dir=None,
     log_dir=None,
     device=None,
+    graph_dir=None,
 ):
     """Train GraphRNN and return the newest checkpoint produced by this run."""
     config_file = os.fspath(config_file)
@@ -201,6 +202,9 @@ def train_graph_rnn(
     # Load config
     with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
+
+    if graph_dir is not None:
+        config['data']['graph_dir'] = os.fspath(graph_dir)
 
     checkpoint_path = (
         Path(checkpoint_dir)
@@ -348,6 +352,8 @@ def build_arg_parser():
                         help='Checkpoint to continue training from')
     parser.add_argument('--gpu', dest='gpu_id', required=False, default=0, type=int,
                         help='Id of the GPU to use')
+    parser.add_argument('--graph-dir', dest='graph_dir', required=False, default=None,
+                        help='Swiss graph_in directory; defaults to MSD_DATA_ROOT')
     return parser
 
 
@@ -357,6 +363,7 @@ def main(argv=None):
         config_file=args.config_file,
         restore_path=args.restore_path,
         gpu_id=args.gpu_id,
+        graph_dir=args.graph_dir,
     )
 
 

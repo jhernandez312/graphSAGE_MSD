@@ -2,8 +2,9 @@
 
 Room classification on floor plan graphs using graph neural networks.
 
-- [Paper](https://arxiv.org/abs/2108.05947)
-- [Dataset](https://www.dropbox.com/sh/p707nojabzf0nhi/AAB4UPwW0EgHhbQuHyq60tCKa?dl=0&preview=housegan_clean_data.npy)
+- [Graph2Plan paper](https://arxiv.org/abs/2108.05947)
+- [Modified Swiss Dwellings dataset](https://www.kaggle.com/datasets/caspervanengelenburg/modified-swiss-dwellings)
+- [Legacy HouseGAN data](https://www.dropbox.com/sh/p707nojabzf0nhi/AAB4UPwW0EgHhbQuHyq60tCKa?dl=0&preview=housegan_clean_data.npy)
 
 ## Environment setup
 
@@ -50,19 +51,61 @@ Each graph directory contains:
 
 The graph is sampled once. Conversion, both images, predictions, and metadata all use that same adjacency matrix. Generated graphs provide six structural features; when a structural GraphSAGE checkpoint declares additional semantic columns, the pipeline records and zero-fills those columns. Zoning checkpoints and directed GraphRNN checkpoints are rejected because the generator does not provide the required attributes.
 
+
+### Expected dataset layout
+
+Set the root for the current shell after downloading. To keep it for future PowerShell sessions, also save it as a user environment variable:
+
+```powershell
+$env:MSD_DATA_ROOT = $datasetRoot
+[Environment]::SetEnvironmentVariable("MSD_DATA_ROOT", $datasetRoot, "User")
+```
+
+For `--graphs-only` and existing legacy copies, `MSD_DATA_ROOT` should contain this layout:
+
+```text
+MSD_DATA_ROOT/
+|-- actual_data/
+    |-- train/
+    |   |-- graph_in/
+    |   |   `-- <id>.pickle
+    |   `-- graph_out/
+    |       `-- <id>.pickle
+    `-- test/
+        `-- graph_in/
+            `-- <id>.pickle
+```
+
+The full Kaggle download keeps its archive-native outer directory. This layout is also accepted:
+
+```text
+MSD_DATA_ROOT/
+|-- dataset_receipt.json
+`-- modified-swiss-dwellings-v2/
+    |-- train/
+    |   |-- graph_in/
+    |   |-- graph_out/
+    |   |-- struct_in/
+    |   `-- full_out/
+    `-- test/
+        |-- graph_in/
+        `-- struct_in/
+```
+
+Additional files from the Kaggle release may be present. Training requires the three graph directories shown in the first layout; `struct_in` and `full_out` are not used by the current GraphRNN or GraphSAGE code.
+
 ## MSD training
 
-The graph directories are produced separately and are not included in this repository. Run training from the repository root, replacing the paths as needed:
+GraphRNN, GraphSAGE, and enabled training stages in `run_pipeline.py` resolve their default dataset paths from `MSD_DATA_ROOT`. Generation with both training switches disabled does not require the dataset.
+
+Run GraphSAGE training from the repository root:
 
 ```powershell
 uv run python msd_train.py `
   --feature_mode structural `
   --semantic_features room_shape `
   --semantic_dropout 0.5 `
-  --val_ratio 0.1 `
-  --train_graph_in_dir "..\swiss_dwellings_test\actual_data\train\graph_in" `
-  --train_graph_out_dir "..\swiss_dwellings_test\actual_data\train\graph_out" `
-  --test_graph_in_dir "..\swiss_dwellings_test\actual_data\test\graph_in"
+  --val_ratio 0.1
 ```
 
 Use `uv run python msd_train.py --help` for all training options.
@@ -88,4 +131,4 @@ uv run python generate_for_graphSAGE.py --help
 Pop-Location
 ```
 
-Before GraphRNN training, update `configs\config_swiss.yaml` if its dataset path does not match your checkout. See [`ablation_GraphRNN/graph-rnn/README.md`](ablation_GraphRNN/graph-rnn/README.md) for the model requirements and background.
+The Swiss GraphRNN configuration also resolves `train/graph_in` from `MSD_DATA_ROOT`; `--graph-dir` remains available as an explicit override. See [`ablation_GraphRNN/graph-rnn/README.md`](ablation_GraphRNN/graph-rnn/README.md) for the model requirements and background.

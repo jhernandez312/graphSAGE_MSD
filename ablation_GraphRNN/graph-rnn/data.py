@@ -321,7 +321,30 @@ class GraphDataSet(torch.utils.data.Dataset):
         """
 
         if self.graph_dir is None:
-            raise ValueError("graph_dir must be provided when dataset='swiss'")
+            dataset_root = os.environ.get("MSD_DATA_ROOT")
+            if not dataset_root:
+                raise ValueError(
+                    "graph_dir must be provided when dataset='swiss', or "
+                    "MSD_DATA_ROOT must be set"
+                )
+            root = os.path.abspath(os.path.expanduser(dataset_root))
+            candidates = [
+                os.path.join(root, "actual_data", "train", "graph_in"),
+                os.path.join(root, "modified-swiss-dwellings-v2", "train", "graph_in"),
+                os.path.join(root, "train", "graph_in"),
+            ]
+            if os.path.isdir(root):
+                candidates.extend(
+                    os.path.join(root, child, "train", "graph_in")
+                    for child in sorted(os.listdir(root))
+                )
+            self.graph_dir = next(
+                (candidate for candidate in candidates if os.path.isdir(candidate)), None
+            )
+            if self.graph_dir is None:
+                raise ValueError(
+                    f"MSD_DATA_ROOT does not contain a train/graph_in directory: {root}"
+                )
 
         retval = []
 
